@@ -6,7 +6,7 @@ AR = {57:"أرسنال",58:"أستون فيلا",61:"تشيلسي",62:"إيفر�
 397:"برايتون",402:"برنتفورد",1044:"بورنموث",1076:"كوفنتري سيتي"}
 
 req = urllib.request.Request(
-    "https://api.football-data.org/v4/competitions/PL/matches?status=SCHEDULED",
+    "https://api.football-data.org/v4/competitions/PL/matches?status=SCHEDULED,TIMED,IN_PLAY,PAUSED",
     headers={"X-Auth-Token": os.environ["FD_KEY"]})
 data = json.load(urllib.request.urlopen(req, timeout=30))
 ms = data["matches"]
