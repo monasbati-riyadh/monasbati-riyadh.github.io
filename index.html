@@ -21,6 +21,7 @@ h2{font-size:17px;margin:0 0 8px}
 .ok{background:#dcfce7;color:var(--ok)}.warn{background:#fef3c7;color:var(--warn)}.bad{background:#fee2e2;color:var(--bad)}.na{background:#e5e7eb;color:#374151}
 .item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #eee;font-size:15px}
 .item:first-of-type{border-top:0}
+.item{flex-wrap:wrap}.item>span:first-child{flex:1 1 auto}.item>span:last-child{flex:0 1 auto;max-width:100%}.item>span:last-child:has(.note){flex:1 1 100%;display:flex;flex-direction:column;align-items:flex-start}.item .note{margin-top:4px}
 .note{font-size:13px;color:var(--mut);margin-top:8px}
 footer{font-size:12px;color:var(--mut);text-align:center;padding:8px 16px 30px}
 </style>
@@ -76,10 +77,10 @@ var p=new URLSearchParams(location.search);
 var d=new Date();var ld=function(x){return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0")};
 $("date").value=p.get("date")||ld(d);if(p.get("city")&&CITIES[p.get("city")])cs.value=p.get("city");
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
-function item(l,tagText,tagCls,extra){var r=el("div","item");var a=el("span","",l);var b=el("span");b.appendChild(el("span","tag "+tagCls,tagText));if(extra){b.appendChild(el("div","note",extra))}r.appendChild(a);r.appendChild(b);return r}
+function item(l,tagText,tagCls,extra){l=String(l).replace(/ ([صم])(?=$|[\s،.)])/g,"\u00a0$1");var r=el("div","item");var a=el("span","",l);var b=el("span");b.appendChild(el("span","tag "+tagCls,tagText));if(extra){b.appendChild(el("div","note",extra))}r.appendChild(a);r.appendChild(b);return r}
 function card(title){var c=el("div","card");c.appendChild(el("h2","",title));return c}
 function hijri(s){var dt=new Date(s+"T12:00:00Z");var f=new Intl.DateTimeFormat("en-u-ca-islamic-umalqura",{day:"numeric",month:"numeric",year:"numeric",timeZone:"UTC"}).formatToParts(dt);var o={};f.forEach(function(x){o[x.type]=+x.value});var ar=new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}).format(dt);return{d:o.day,m:o.month,txt:ar}}
-function fh2(t){var a=t.split(":"),h=+a[0],p=h>=12?"م":"ص",x=h%12;if(x===0)x=12;return (x+":"+a[1]+" "+p).replace(/[0-9]/g,function(d){return "٠١٢٣٤٥٦٧٨٩"[d]})}
+function fh2(t){var a=t.split(":"),h=+a[0],p=h>=12?"م":"ص",x=h%12;if(x===0)x=12;return (x+":"+a[1]+"\u00a0"+p).replace(/[0-9]/g,function(d){return "٠١٢٣٤٥٦٧٨٩"[d]})}
 function fh(h){var p=h>=12?"م":"ص";var x=h%12;if(x===0)x=12;return x+" "+p}
 function ranges(a){var o=[],st=a[0],pv=a[0];for(var i=1;i<=a.length;i++){if(a[i]!==pv+1){o.push(st===pv?fh(st):("من "+fh(st)+" إلى "+fh(pv+1)));st=a[i]}pv=a[i]}return o.join("، ")}
 function daysFrom(s){var a=new Date(ld(new Date())+"T00:00:00Z"),b=new Date(s+"T00:00:00Z");return Math.round((b-a)/864e5)}
