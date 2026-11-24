@@ -8,6 +8,10 @@ on:
         description: 'Force a test alert (labelled TEST)'
         type: boolean
         default: false
+      test_baseline:
+        description: 'Simulate a lost baseline (labelled TEST)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   issues: write
@@ -25,6 +29,7 @@ jobs:
         env:
           OPENFOOT_KEY: ${{ secrets.OPENFOOT_API_KEY }}
           TEST_ALERT: ${{ inputs.test_alert }}
+          TEST_BASE: ${{ inputs.test_baseline }}
         run: |
           python3 - <<'PY'
           import json,os,urllib.request
@@ -40,10 +45,14 @@ jobs:
               if not cur: break
           assert len(new)>100, "unexpectedly small match list: %d"%len(new)
           old=json.load(open("snap.json")) if os.path.exists("snap.json") else None
+          if os.environ.get("TEST_BASE")=="true": old=None
           if old is not None and os.environ.get("TEST_ALERT")=="true":
               k=next(i for i,v in new.items() if v[0]=="scheduled"); old[k]=["scheduled","2000-01-01T00:00:00Z"]
           changes=[]
-          if old is not None:
+          if old is None:
+              up=sorted((v[1],k,v[0]) for k,v in new.items() if v[0]!="finished")[:15]
+              changes=[(k,"baseline-missing",st,ko) for ko,k,st in up]
+          else:
               for k,(st,ko) in new.items():
                   o=old.get(k)
                   if o is None:
@@ -54,6 +63,9 @@ jobs:
           json.dump(new,open("snap.json","w"))
           lines=["%s | %s | now %s | kickoff %s"%(k,t,s,ko) for k,t,s,ko in changes[:40]]
           out=open(os.environ["GITHUB_ENV"],"a")
+          title="SPL baseline missing - review required" if old is None else "SPL fixture change detected"
+          if os.environ.get("TEST_ALERT")=="true" or os.environ.get("TEST_BASE")=="true": title="TEST - "+title
+          out.write("TITLE=%s\n"%title)
           out.write("COUNT=%d\nTOTAL=%d\nBASELINE=%s\n"%(len(changes),len(new),"0" if old is not None else "1"))
           open("issue.txt","w").write("\n".join(lines))
           PY
@@ -63,9 +75,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TESTFLAG: ${{ inputs.test_alert }}
         run: |
-          T="SPL fixture change detected"
-          [ "$TESTFLAG" = "true" ] && T="TEST - SPL fixture change detected"
-          { echo "@monasbati-riyadh SPL fixture alert."; echo; echo "Daily check found $COUNT change(s) in the Saudi Pro League match list ($TOTAL matches tracked)."; echo; echo "Action: verify against the official SPL schedule, then update the site list."; echo; echo '```'; cat issue.txt; echo '```'; } > body.md
+          T="$TITLE"
+          { echo "@monasbati-riyadh SPL fixture alert."; echo; echo "Daily check found $COUNT change(s) in the Saudi Pro League match list ($TOTAL matches tracked)."; echo; echo "Action: verify against the official SPL schedule, then update the site list. If the title says baseline missing, the saved snapshot was lost: reconcile the whole official schedule with the site list before trusting the new baseline (the next 15 open matches are listed below)."; echo; echo '```'; cat issue.txt; echo '```'; } > body.md
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$T" --body-file body.md
       - uses: actions/cache/save@v4
         with:
