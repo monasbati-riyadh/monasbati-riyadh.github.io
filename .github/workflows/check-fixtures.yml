@@ -22,9 +22,9 @@ jobs:
     steps:
       - uses: actions/cache/restore@v4
         with:
-          path: snap.json
-          key: spl-snap-none
-          restore-keys: spl-snap-
+          path: snap.enc
+          key: spl-enc-none
+          restore-keys: spl-enc-
       - name: Fetch all SPL matches and compare
         env:
           OPENFOOT_KEY: ${{ secrets.OPENFOOT_API_KEY }}
@@ -44,7 +44,14 @@ jobs:
               cur=(j.get("meta",{}).get("pagination") or {}).get("next_cursor")
               if not cur: break
           assert len(new)>100, "unexpectedly small match list: %d"%len(new)
-          old=json.load(open("snap.json")) if os.path.exists("snap.json") else None
+          import subprocess
+          def dec():
+              try:
+                  r=subprocess.run(["openssl","enc","-d","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-in","snap.enc"],capture_output=True,check=True)
+                  return json.loads(r.stdout)
+              except Exception:
+                  return None
+          old=dec() if os.path.exists("snap.enc") else None
           if os.environ.get("TEST_BASE")=="true": old=None
           if old is not None and os.environ.get("TEST_ALERT")=="true":
               k=next(i for i,v in new.items() if v[0]=="scheduled"); old[k]=["scheduled","2000-01-01T00:00:00Z"]
@@ -60,7 +67,7 @@ jobs:
                   elif o[0]=="scheduled":
                       if st in("postponed","cancelled","unknown") or (st=="scheduled" and o[1]!=ko):
                           changes.append((k,"changed",st,ko))
-          json.dump(new,open("snap.json","w"))
+          subprocess.run(["openssl","enc","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-out","snap.enc"],input=json.dumps(new).encode(),check=True)
           lines=[]
           out=open(os.environ["GITHUB_ENV"],"a")
           title="SPL baseline missing - review required" if old is None else "SPL fixture change detected"
@@ -80,8 +87,8 @@ jobs:
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$T" --body-file body.md
       - uses: actions/cache/save@v4
         with:
-          path: snap.json
-          key: spl-snap-${{ github.run_id }}-${{ github.run_attempt }}
+          path: snap.enc
+          key: spl-enc-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Keep the schedule alive
         env:
           GH_TOKEN: ${{ github.token }}
