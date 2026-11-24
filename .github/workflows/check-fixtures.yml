@@ -1,0 +1,46 @@
+name: Check Hilal fixtures for changes
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+  actions: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          path: snap.json
+          key: fixtures-snap-none
+          restore-keys: fixtures-snap-
+      - name: Fetch and compare
+        env:
+          OPENFOOT_KEY: ${{ secrets.OPENFOOT_API_KEY }}
+        run: |
+          curl -sf -H "Authorization: Bearer $OPENFOOT_KEY" \
+            "https://openfootapi.com/v1/matches?competition=comp_saudi_pro_league_sau&team=team_al_hilal_sau&status=scheduled&limit=50" -o new.json
+          python3 - <<'PY'
+          import json,os
+          new={m["id"]:m["kickoffAt"] for m in json.load(open("new.json"))["data"]}
+          old=json.load(open("snap.json")) if os.path.exists("snap.json") else None
+          changed=False
+          if old is not None:
+              changed = any(old.get(k)!=v for k,v in new.items()) or any(k not in new for k in old)
+          json.dump(new,open("snap.json","w"))
+          open(os.environ["GITHUB_ENV"],"a").write("CHANGED=%s\n"%("1" if changed else "0"))
+          PY
+      - name: Open an issue when a kickoff changed
+        if: env.CHANGED == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Hilal fixture list changed - check the SPL announcement" \
+            --body "The daily check saw a change in the upcoming Al Hilal match list. Verify against the official SPL schedule and update the site list. No match data is stored in this repo."
+      - uses: actions/cache/save@v4
+        with:
+          path: snap.json
+          key: fixtures-snap-${{ github.run_id }}
