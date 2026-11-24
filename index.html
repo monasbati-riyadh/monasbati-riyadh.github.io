@@ -37,13 +37,14 @@ footer{font-size:12px;color:var(--mut);text-align:center;padding:8px 16px 30px}
 </div>
 <div id="out"></div>
 </main>
-<footer>الخصوصية: عند فحص تاريخ يرسل متصفحك طلبًا إلى مزوّد الطقس Open-Meteo يتضمن إحداثيات الرياض وتاريخ الفحص، ويرى المزوّد عنوان الشبكة (IP) كأي موقع. كما تسجّل خدمة الاستضافة GitHub Pages زيارات الموقع بشكل اعتيادي. موقعنا لا يحفظ شيئًا. التنبيه: حدود الرياح والحر والبرد والغبار تقديرية من عندنا وليست تحذيرات رسمية، فتحقق من الأرصاد الرسمية قبل أي قرار مهم. الطقس: Open-Meteo (غير تجاري).</footer>
+<footer>Football data provided by the Football-Data.org API<br>الخصوصية: عند فحص تاريخ يرسل متصفحك طلبًا إلى مزوّد الطقس Open-Meteo يتضمن إحداثيات الرياض وتاريخ الفحص، ويرى المزوّد عنوان الشبكة (IP) كأي موقع. كما تسجّل خدمة الاستضافة GitHub Pages زيارات الموقع بشكل اعتيادي. موقعنا لا يحفظ شيئًا. التنبيه: حدود الرياح والحر والبرد والغبار تقديرية من عندنا وليست تحذيرات رسمية، فتحقق من الأرصاد الرسمية قبل أي قرار مهم. الطقس: Open-Meteo (غير تجاري).</footer>
 <script>
 // Riyadh only for now; add more cities here later.
 var CITIES={riyadh:["الرياض",24.7136,46.6753]};
 // Thresholds are our own suggestions, to be confirmed by the owner.
 var T={gust:50,heat:42,cold:5,dust:100};
 // Hand-kept list. Each entry: from, to (optional), title, where, level (official|press), source, url. Only entries with a source.
+var PL={upd:"",first:"",last:"",m:[]};//PLDATA
 var MANUAL=[
 {from:"2026-11-26",to:"2026-11-28",title:"الجولة 13 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
 {from:"2026-12-03",to:"2026-12-05",title:"الجولة 14 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
@@ -78,6 +79,7 @@ function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!==und
 function item(l,tagText,tagCls,extra){var r=el("div","item");var a=el("span","",l);var b=el("span");b.appendChild(el("span","tag "+tagCls,tagText));if(extra){b.appendChild(el("div","note",extra))}r.appendChild(a);r.appendChild(b);return r}
 function card(title){var c=el("div","card");c.appendChild(el("h2","",title));return c}
 function hijri(s){var dt=new Date(s+"T12:00:00Z");var f=new Intl.DateTimeFormat("en-u-ca-islamic-umalqura",{day:"numeric",month:"numeric",year:"numeric",timeZone:"UTC"}).formatToParts(dt);var o={};f.forEach(function(x){o[x.type]=+x.value});var ar=new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}).format(dt);return{d:o.day,m:o.month,txt:ar}}
+function fh2(t){var a=t.split(":"),h=+a[0],p=h>=12?"م":"ص",x=h%12;if(x===0)x=12;return (x+":"+a[1]+" "+p).replace(/[0-9]/g,function(d){return "٠١٢٣٤٥٦٧٨٩"[d]})}
 function fh(h){var p=h>=12?"م":"ص";var x=h%12;if(x===0)x=12;return x+" "+p}
 function ranges(a){var o=[],st=a[0],pv=a[0];for(var i=1;i<=a.length;i++){if(a[i]!==pv+1){o.push(st===pv?fh(st):("من "+fh(st)+" إلى "+fh(pv+1)));st=a[i]}pv=a[i]}return o.join("، ")}
 function daysFrom(s){var a=new Date(ld(new Date())+"T00:00:00Z"),b=new Date(s+"T00:00:00Z");return Math.round((b-a)/864e5)}
@@ -92,10 +94,12 @@ async function run(){
  FIXED.forEach(function(f){if(s.slice(5)===f[0]){ev.appendChild(item(f[1],"حدث رسمي ثابت","ok"));found++}});
  var H=[[9,1,"بداية رمضان"],[10,1,"عيد الفطر"],[12,9,"يوم عرفة"],[12,10,"عيد الأضحى"],[1,1,"رأس السنة الهجرية"]];
  H.forEach(function(x){if(h.m===x[0]&&h.d===x[1]){ev.appendChild(item(x[2],"حسب تقويم أم القرى","warn","الموعد الفعلي يعتمد على الإعلان الرسمي"));found++}});
+ PL.m.forEach(function(x){if(x.d===s){var r=item(x.h+" × "+x.a+"، "+fh2(x.t),"مزوّد بيانات","na","الدوري الإنجليزي الممتاز . بتوقيت الرياض");ev.appendChild(r);found++}});
  MANUAL.forEach(function(m){if(s>=m.from&&s<=(m.to||m.from)){var lv=LEVEL[m.level];var r=item(m.title,lv[0],lv[1],m.where+" . "+m.source);var a=el("a","note","المصدر");a.href=m.url;a.target="_blank";a.rel="noopener";r.lastChild.appendChild(a);ev.appendChild(r);found++}});
  var inRange=s>="2026-11-24"&&s<="2027-01-30";
  ev.appendChild(item("قائمة المباريات والمناسبات","محدّثة يدويًا","na","آخر تحديث "+MANUAL_UPDATED+". "+(inRange?"تغطي جدول دوري روشن الرسمي حتى ٣٠ يناير ٢٠٢٧. مباريات المنتخب وكأس الملك والفعاليات والإجازات المدرسية غير مضافة، وأوقات المباريات قابلة للتغيير. مباريات الهلال فقط مفصّلة بالتاريخ والوقت.":"هذا التاريخ خارج ما غطيناه بعد.")));
  if(!found)ev.appendChild(el("div","note","ما لقينا حدث مؤكد في قائمتنا، وهي ناقصة. هذا ليس تأكيدًا أن اليوم فاضي."));
+ if(PL.m.length&&s>=PL.first&&s<=PL.last)ev.appendChild(item("الدوري الإنجليزي الممتاز","يتحدث يوميًا","na","من مزوّد بيانات خارجي، آخر تحديث "+PL.upd+". قد يتأخر وصول التغييرات، فتأكد من الموقع الرسمي للمباريات المهمة."));
  out.appendChild(ev);
  // Weather
  var w=card("الطقس والمخاطر");out.appendChild(w);
