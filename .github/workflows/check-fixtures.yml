@@ -1,8 +1,13 @@
-name: Check Hilal fixtures for changes
+name: Check SPL fixtures for changes
 on:
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:
+    inputs:
+      test_alert:
+        description: 'Force a test alert (labelled TEST)'
+        type: boolean
+        default: false
 permissions:
   contents: read
   issues: write
@@ -14,33 +19,61 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: snap.json
-          key: fixtures-snap-none
-          restore-keys: fixtures-snap-
-      - name: Fetch and compare
+          key: spl-snap-none
+          restore-keys: spl-snap-
+      - name: Fetch all SPL matches and compare
         env:
           OPENFOOT_KEY: ${{ secrets.OPENFOOT_API_KEY }}
+          TEST_ALERT: ${{ inputs.test_alert }}
         run: |
-          curl -sf -H "Authorization: Bearer $OPENFOOT_KEY" \
-            "https://openfootapi.com/v1/matches?competition=comp_saudi_pro_league_sau&team=team_al_hilal_sau&status=scheduled&limit=50" -o new.json
           python3 - <<'PY'
-          import json,os
-          new={m["id"]:m["kickoffAt"] for m in json.load(open("new.json"))["data"]}
+          import json,os,urllib.request
+          H={"Authorization":"Bearer "+os.environ["OPENFOOT_KEY"]}
+          base="https://openfootapi.com/v1/matches?competition=comp_saudi_pro_league_sau&limit=100"
+          new={};cur=None
+          while True:
+              u=base+("&cursor="+cur if cur else "")
+              j=json.load(urllib.request.urlopen(urllib.request.Request(u,headers=H),timeout=30))
+              for m in j["data"]:
+                  new[m["id"]]=[m["status"],m["kickoffAt"]]
+              cur=(j.get("meta",{}).get("pagination") or {}).get("next_cursor")
+              if not cur: break
+          assert len(new)>100, "unexpectedly small match list: %d"%len(new)
           old=json.load(open("snap.json")) if os.path.exists("snap.json") else None
-          changed=False
+          if old is not None and os.environ.get("TEST_ALERT")=="true":
+              k=next(iter(new)); old[k]=["scheduled","2000-01-01T00:00:00Z"]
+          changes=[]
           if old is not None:
-              changed = any(old.get(k)!=v for k,v in new.items()) or any(k not in new for k in old)
+              for k,(st,ko) in new.items():
+                  o=old.get(k)
+                  if o is None:
+                      if st!="finished": changes.append((k,"new",st,ko))
+                  elif o[0]=="scheduled":
+                      if st in("postponed","cancelled","unknown") or (st=="scheduled" and o[1]!=ko):
+                          changes.append((k,"changed",st,ko))
           json.dump(new,open("snap.json","w"))
-          open(os.environ["GITHUB_ENV"],"a").write("CHANGED=%s\n"%("1" if changed else "0"))
+          lines=["%s | %s | now %s | kickoff %s"%(k,t,s,ko) for k,t,s,ko in changes[:40]]
+          out=open(os.environ["GITHUB_ENV"],"a")
+          out.write("COUNT=%d\nTOTAL=%d\nBASELINE=%s\n"%(len(changes),len(new),"0" if old is not None else "1"))
+          open("issue.txt","w").write("\n".join(lines))
           PY
-      - name: Open an issue when a kickoff changed
-        if: env.CHANGED == '1'
+      - name: Open an issue when something changed
+        if: env.COUNT != '0'
         env:
           GH_TOKEN: ${{ github.token }}
+          TESTFLAG: ${{ inputs.test_alert }}
         run: |
-          gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "Hilal fixture list changed - check the SPL announcement" \
-            --body "The daily check saw a change in the upcoming Al Hilal match list. Verify against the official SPL schedule and update the site list. No match data is stored in this repo."
+          T="SPL fixture change detected"
+          [ "$TESTFLAG" = "true" ] && T="TEST - SPL fixture change detected"
+          { echo "Daily check found $COUNT change(s) in the Saudi Pro League match list ($TOTAL matches tracked)."; echo; echo "Action: verify against the official SPL schedule, then update the site list."; echo; echo '```'; cat issue.txt; echo '```'; } > body.md
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$T" --body-file body.md
       - uses: actions/cache/save@v4
         with:
           path: snap.json
-          key: fixtures-snap-${{ github.run_id }}
+          key: spl-snap-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Keep the schedule alive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/check-fixtures.yml/enable" || true
+      - name: Summary
+        run: echo "tracked=$TOTAL changes=$COUNT baseline_run=$BASELINE" >> "$GITHUB_STEP_SUMMARY"
