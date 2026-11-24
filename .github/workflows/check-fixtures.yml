@@ -61,7 +61,7 @@ jobs:
                       if st in("postponed","cancelled","unknown") or (st=="scheduled" and o[1]!=ko):
                           changes.append((k,"changed",st,ko))
           json.dump(new,open("snap.json","w"))
-          lines=["%s | %s | now %s | kickoff %s"%(k,t,s,ko) for k,t,s,ko in changes[:40]]
+          lines=[]
           out=open(os.environ["GITHUB_ENV"],"a")
           title="SPL baseline missing - review required" if old is None else "SPL fixture change detected"
           if os.environ.get("TEST_ALERT")=="true" or os.environ.get("TEST_BASE")=="true": title="TEST - "+title
@@ -76,7 +76,7 @@ jobs:
           TESTFLAG: ${{ inputs.test_alert }}
         run: |
           T="$TITLE"
-          { echo "@monasbati-riyadh SPL fixture alert."; echo; echo "Daily check found $COUNT change(s) in the Saudi Pro League match list ($TOTAL matches tracked)."; echo; echo "Action: verify against the official SPL schedule, then update the site list. If the title says baseline missing, the saved snapshot was lost: reconcile the whole official schedule with the site list before trusting the new baseline (the next 15 open matches are listed below)."; echo; echo '```'; cat issue.txt; echo '```'; } > body.md
+          { echo "@monasbati-riyadh SPL fixture check needs review."; echo; echo "The daily check flagged a change or a lost baseline. No match data is published here."; echo; echo "Action: verify the whole official SPL schedule against the site list, update the site from official sources, then close this issue."; } > body.md
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$T" --body-file body.md
       - uses: actions/cache/save@v4
         with:
