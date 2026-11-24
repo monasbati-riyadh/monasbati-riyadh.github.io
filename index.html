@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مناسبتي (اسم مؤقت)</title>
+<style>
+:root{--g:#0b5d3b;--bg:#f6f3ec;--card:#fff;--ink:#1c1c1c;--mut:#666;--warn:#b45309;--bad:#b91c1c;--ok:#166534}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,"Segoe UI",Tahoma,Arial,sans-serif;line-height:1.6}
+header{background:var(--g);color:#fff;padding:20px 16px}
+header h1{margin:0;font-size:22px}header p{margin:4px 0 0;opacity:.9;font-size:14px}
+main{max-width:720px;margin:0 auto;padding:16px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+label{display:block;font-size:14px;color:var(--mut);margin-bottom:4px}
+input,select,button{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid #ccc;width:100%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{background:var(--g);color:#fff;border:0;margin-top:12px;font-weight:600;cursor:pointer}
+h2{font-size:17px;margin:0 0 8px}
+.tag{display:inline-block;white-space:nowrap;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:600}
+.ok{background:#dcfce7;color:var(--ok)}.warn{background:#fef3c7;color:var(--warn)}.bad{background:#fee2e2;color:var(--bad)}.na{background:#e5e7eb;color:#374151}
+.item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #eee;font-size:15px}
+.item:first-of-type{border-top:0}
+.note{font-size:13px;color:var(--mut);margin-top:8px}
+footer{font-size:12px;color:var(--mut);text-align:center;padding:8px 16px 30px}
+</style>
+</head>
+<body>
+<header><h1>مناسبتي <small style="font-weight:400">(اسم مؤقت)</small></h1><p>اختر تاريخ مناسبتك وشف وش ممكن يتعارض معها</p></header>
+<main>
+<div class="card">
+ <div class="row">
+  <div><label for="date">تاريخ المناسبة</label><input id="date" type="date"></div>
+  <div><label for="city">المدينة</label><select id="city" disabled></select></div>
+ </div>
+ <button id="go" type="button">افحص التاريخ</button>
+</div>
+<div id="out"></div>
+</main>
+<footer>الخصوصية: عند فحص تاريخ يرسل متصفحك طلبًا إلى مزوّد الطقس Open-Meteo يتضمن إحداثيات الرياض وتاريخ الفحص، ويرى المزوّد عنوان الشبكة (IP) كأي موقع. كما تسجّل خدمة الاستضافة GitHub Pages زيارات الموقع بشكل اعتيادي. موقعنا لا يحفظ شيئًا. التنبيه: حدود الرياح والحر والبرد والغبار تقديرية من عندنا وليست تحذيرات رسمية، فتحقق من الأرصاد الرسمية قبل أي قرار مهم. الطقس: Open-Meteo (غير تجاري).</footer>
+<script>
+// Riyadh only for now; add more cities here later.
+var CITIES={riyadh:["الرياض",24.7136,46.6753]};
+// Thresholds are our own suggestions, to be confirmed by the owner.
+var T={gust:50,heat:42,cold:5,dust:100};
+// Hand-kept list. Each entry: from, to (optional), title, where, level (official|press), source, url. Only entries with a source.
+var MANUAL=[
+{from:"2026-11-26",to:"2026-11-28",title:"الجولة 13 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2026-12-03",to:"2026-12-05",title:"الجولة 14 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2026-12-10",to:"2026-12-12",title:"الجولة 15 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2026-12-15",to:"2026-12-18",title:"الجولة 16 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2026-12-31",to:"2027-01-02",title:"الجولة 17 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2027-01-07",to:"2027-01-09",title:"الجولة 18 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2027-01-14",to:"2027-01-16",title:"الجولة 19 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2027-01-21",to:"2027-01-23",title:"الجولة 20 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2027-01-28",to:"2027-01-30",title:"الجولة 21 من دوري روشن",where:"عدة مدن",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2026-11-28",title:"الاتفاق × الهلال، ٥:٢٠ م",where:"الدمام",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2026-12-03",title:"الهلال × الدرعية، ٨:٣٠ م",where:"المملكة أرينا، الرياض",level:"official",source:"موعد: موقع نادي الهلال، الوقت والملعب: جدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"},
+{from:"2026-12-11",title:"الخلود × الهلال، ٥:٥٠ م",where:"الرس",level:"official",source:"موقع نادي الهلال وجدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"},
+{from:"2026-12-17",title:"الهلال × أبها، ٨:٣٠ م",where:"المملكة أرينا، الرياض",level:"official",source:"موعد: موقع نادي الهلال، الوقت والملعب: جدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"},
+{from:"2026-12-21",title:"الرياض × الهلال (مؤجلة)، ٥:٤٥ م",where:"ملعب الأمير فيصل بن فهد، الرياض",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2027-01-01",title:"النصر × الهلال، ٨:٣٠ م",where:"الأول بارك، الرياض",level:"official",source:"موعد: موقع نادي الهلال، الوقت والملعب: جدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"},
+{from:"2027-01-16",title:"الهلال × الفيحاء، ٨:٣٠ م",where:"المملكة أرينا، الرياض",level:"official",source:"موعد: موقع نادي الهلال، الوقت والملعب: جدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"},
+{from:"2027-01-28",title:"الهلال × الخليج، ٦:١٥ م",where:"المملكة أرينا، الرياض",level:"official",source:"جدول رابطة الدوري السعودي",url:"https://images.spl.com.sa/image/private/fl_attachment/prd/m54jmnwpd2embhoz8bvb.pdf"},
+{from:"2027-12-23",title:"انطلاق كأس آسيا في السعودية بعد التأجيل (من ٢٣ ديسمبر ٢٠٢٧ إلى ٢١ يناير ٢٠٢٨، بانتظار موافقة فيفا)",where:"الرياض وجدة والخبر",level:"official",source:"الاتحاد الآسيوي لكرة القدم",url:"https://www.the-afc.com/en/national/afc_asian_cup.html/news/important-update-afc-asian-cup-saudi-arabia-2027%E2%84%A2"},
+{from:"2027-01-08",title:"الفيصلي × الهلال، ٤:٣٥ م",where:"المجمعة",level:"official",source:"موعد: موقع نادي الهلال، الوقت والملعب: جدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"},
+{from:"2027-01-22",title:"الأهلي × الهلال، ٨:٣٠ م",where:"جدة",level:"official",source:"موعد: موقع نادي الهلال، الوقت والملعب: جدول الرابطة",url:"https://alhilal.com/en/news/al-hilals-upcoming-schedule-of-rsl-and-kings-cup-fixtures"}
+];
+var LEVEL={official:["مصدر رسمي","ok"],press:["صحافة، تحقق قبل الاعتماد","warn"]};
+var MANUAL_UPDATED="٢٤ نوفمبر ٢٠٢٦";
+var FIXED=[["02-22","يوم التأسيس"],["09-23","اليوم الوطني"]];
+var $=function(i){return document.getElementById(i)};
+var cs=$("city");for(var k in CITIES){var o=document.createElement("option");o.value=k;o.textContent=CITIES[k][0];cs.appendChild(o)}
+var p=new URLSearchParams(location.search);
+var d=new Date();var ld=function(x){return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0")};
+$("date").value=p.get("date")||ld(d);if(p.get("city")&&CITIES[p.get("city")])cs.value=p.get("city");
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
+function item(l,tagText,tagCls,extra){var r=el("div","item");var a=el("span","",l);var b=el("span");b.appendChild(el("span","tag "+tagCls,tagText));if(extra){b.appendChild(el("div","note",extra))}r.appendChild(a);r.appendChild(b);return r}
+function card(title){var c=el("div","card");c.appendChild(el("h2","",title));return c}
+function hijri(s){var dt=new Date(s+"T12:00:00Z");var f=new Intl.DateTimeFormat("en-u-ca-islamic-umalqura",{day:"numeric",month:"numeric",year:"numeric",timeZone:"UTC"}).formatToParts(dt);var o={};f.forEach(function(x){o[x.type]=+x.value});var ar=new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}).format(dt);return{d:o.day,m:o.month,txt:ar}}
+function fh(h){var p=h>=12?"م":"ص";var x=h%12;if(x===0)x=12;return x+" "+p}
+function ranges(a){var o=[],st=a[0],pv=a[0];for(var i=1;i<=a.length;i++){if(a[i]!==pv+1){o.push(st===pv?fh(st):("من "+fh(st)+" إلى "+fh(pv+1)));st=a[i]}pv=a[i]}return o.join("، ")}
+function daysFrom(s){var a=new Date(ld(new Date())+"T00:00:00Z"),b=new Date(s+"T00:00:00Z");return Math.round((b-a)/864e5)}
+async function run(){
+ var s=$("date").value,out=$("out");out.textContent="";if(!s)return;
+ var city=CITIES[cs.value],n=daysFrom(s);
+ var wd=new Date(s+"T12:00:00Z").toLocaleDateString("ar-SA",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"UTC"});
+ var h=hijri(s);
+ var head=card(wd);head.appendChild(el("div","note","الهجري (أم القرى): "+h.txt+" . "+city[0]));out.appendChild(head);
+ // Events
+ var ev=card("المباريات والأحداث");var found=0;
+ FIXED.forEach(function(f){if(s.slice(5)===f[0]){ev.appendChild(item(f[1],"حدث رسمي ثابت","ok"));found++}});
+ var H=[[9,1,"بداية رمضان"],[10,1,"عيد الفطر"],[12,9,"يوم عرفة"],[12,10,"عيد الأضحى"],[1,1,"رأس السنة الهجرية"]];
+ H.forEach(function(x){if(h.m===x[0]&&h.d===x[1]){ev.appendChild(item(x[2],"حسب تقويم أم القرى","warn","الموعد الفعلي يعتمد على الإعلان الرسمي"));found++}});
+ MANUAL.forEach(function(m){if(s>=m.from&&s<=(m.to||m.from)){var lv=LEVEL[m.level];var r=item(m.title,lv[0],lv[1],m.where+" . "+m.source);var a=el("a","note","المصدر");a.href=m.url;a.target="_blank";a.rel="noopener";r.lastChild.appendChild(a);ev.appendChild(r);found++}});
+ var inRange=s>="2026-11-24"&&s<="2027-01-30";
+ ev.appendChild(item("قائمة المباريات والمناسبات","محدّثة يدويًا","na","آخر تحديث "+MANUAL_UPDATED+". "+(inRange?"تغطي جدول دوري روشن الرسمي حتى ٣٠ يناير ٢٠٢٧. مباريات المنتخب وكأس الملك والفعاليات والإجازات المدرسية غير مضافة، وأوقات المباريات قابلة للتغيير. مباريات الهلال فقط مفصّلة بالتاريخ والوقت.":"هذا التاريخ خارج ما غطيناه بعد.")));
+ if(!found)ev.appendChild(el("div","note","ما لقينا حدث مؤكد في قائمتنا، وهي ناقصة. هذا ليس تأكيدًا أن اليوم فاضي."));
+ out.appendChild(ev);
+ // Weather
+ var w=card("الطقس والمخاطر");out.appendChild(w);
+ if(n<0){w.appendChild(el("div","note","هذا التاريخ مضى."));return}
+ if(n>15){w.appendChild(item("توقع الطقس","بدري عليه","na","مصدر الطقس هنا (Open-Meteo) يغطي حتى ١٦ يومًا فقط، وتاريخك بعد "+n+" يوم. نعيد الفحص كل ما قرب الموعد."));return}
+ w.appendChild(el("div","note","جاري التحميل..."));
+ try{
+  var u="https://api.open-meteo.com/v1/forecast?latitude="+city[1]+"&longitude="+city[2]+"&daily=temperature_2m_max,temperature_2m_min,wind_gusts_10m_max&hourly=temperature_2m,wind_gusts_10m&timezone=Asia%2FRiyadh&forecast_days=16";
+  var r=await fetch(u);if(!r.ok)throw new Error(r.status);var j=await r.json();var i=j.daily.time.indexOf(s);if(i<0)throw new Error("no day");
+  var mx=j.daily.temperature_2m_max[i],mn=j.daily.temperature_2m_min[i],g=j.daily.wind_gusts_10m_max[i];
+  w.textContent="";w.appendChild(el("h2","","الطقس والمخاطر"));
+  w.appendChild(item("الحرارة","من "+Math.round(mn)+" إلى "+Math.round(mx)+" درجة","ok"));
+  w.appendChild(item("حر شديد",mx>=T.heat?"محتمل":"غير متوقع",mx>=T.heat?"bad":"ok","الحد المقترح: "+T.heat+"° فأكثر"));
+  w.appendChild(item("برد شديد",mn<=T.cold?"محتمل":"غير متوقع",mn<=T.cold?"bad":"ok","الحد المقترح: "+T.cold+"° فأقل"));
+  w.appendChild(item("رياح قوية",g>=T.gust?"محتملة":"غير متوقعة",g>=T.gust?"warn":"ok","أقوى هبّات: "+Math.round(g)+" كم/س، الحد المقترح "+T.gust));
+  var hrs=[];j.hourly.time.forEach(function(t,k){if(t.slice(0,10)===s)hrs.push({h:+t.slice(11,13),t:j.hourly.temperature_2m[k],g:j.hourly.wind_gusts_10m[k]})});
+  w.appendChild(el("div","note",hrs.length?("أعلى حرارة "+Math.round(Math.max.apply(null,hrs.map(function(x){return x.t})))+" الساعة "+fh(hrs.reduce(function(a,b){return b.t>a.t?b:a}).h)+"، أقوى هبّات "+Math.round(Math.max.apply(null,hrs.map(function(x){return x.g})))+" كم/س الساعة "+fh(hrs.reduce(function(a,b){return b.g>a.g?b:a}).h)):""));
+  var gh=hrs.filter(function(x){return x.g>=T.gust}).map(function(x){return x.h});if(gh.length)w.appendChild(item("ساعات الرياح القوية","محتملة","warn",ranges(gh)));
+  var hh=hrs.filter(function(x){return x.t>=T.heat}).map(function(x){return x.h});if(hh.length)w.appendChild(item("ساعات الحر الشديد","محتملة","bad",ranges(hh)));
+  if(n<=4){
+   try{var r2=await fetch("https://air-quality-api.open-meteo.com/v1/air-quality?latitude="+city[1]+"&longitude="+city[2]+"&hourly=dust&timezone=Asia%2FRiyadh&forecast_days=7");var j2=await r2.json();
+    var vals=[];j2.hourly.time.forEach(function(t,k){if(t.slice(0,10)===s&&j2.hourly.dust[k]!=null)vals.push(j2.hourly.dust[k])});
+    if(!vals.length)throw 0;var dm=Math.max.apply(null,vals);var dh=[];j2.hourly.time.forEach(function(t,k){if(t.slice(0,10)===s&&j2.hourly.dust[k]>=T.dust)dh.push(+t.slice(11,13))});
+    w.appendChild(item("غبار",dm>=T.dust?"محتمل":"غير متوقع",dm>=T.dust?"warn":"ok","أعلى تركيز متوقع: "+Math.round(dm)+" µg/m³، الحد المقترح "+T.dust+". نموذج عالمي تقريبي."+(dh.length?" ساعات التركيز المرتفع: "+ranges(dh):"")))}
+   catch(e){w.appendChild(item("غبار","تعذر التحميل","na"))}
+  }else w.appendChild(item("غبار","لا توقع بعد","na","توقع الغبار من هذا المصدر يغطي حوالي ٥ إلى ٧ أيام فقط"));
+  w.appendChild(el("div","note","توقعات الأيام البعيدة تتغير. آخر تحديث: عند فتح الصفحة."));
+ }catch(e){w.textContent="";w.appendChild(el("h2","","الطقس والمخاطر"));w.appendChild(item("الطقس","تعذر التحميل","na","ما قدرنا نوصل لمصدر الطقس الحين. جرب بعد شوي."))}
+}
+$("go").addEventListener("click",run);$("date").addEventListener("keydown",function(e){if(e.key==="Enter")run()});
+if(p.get("date"))run();
+</script>
+</body>
+</html>
