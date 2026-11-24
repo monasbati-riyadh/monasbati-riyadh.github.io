@@ -65,7 +65,7 @@ jobs:
         run: |
           T="SPL fixture change detected"
           [ "$TESTFLAG" = "true" ] && T="TEST - SPL fixture change detected"
-          { echo "Daily check found $COUNT change(s) in the Saudi Pro League match list ($TOTAL matches tracked)."; echo; echo "Action: verify against the official SPL schedule, then update the site list."; echo; echo '```'; cat issue.txt; echo '```'; } > body.md
+          { echo "@monasbati-riyadh SPL fixture alert."; echo; echo "Daily check found $COUNT change(s) in the Saudi Pro League match list ($TOTAL matches tracked)."; echo; echo "Action: verify against the official SPL schedule, then update the site list."; echo; echo '```'; cat issue.txt; echo '```'; } > body.md
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$T" --body-file body.md
       - uses: actions/cache/save@v4
         with:
