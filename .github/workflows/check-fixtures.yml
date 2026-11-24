@@ -41,7 +41,7 @@ jobs:
           assert len(new)>100, "unexpectedly small match list: %d"%len(new)
           old=json.load(open("snap.json")) if os.path.exists("snap.json") else None
           if old is not None and os.environ.get("TEST_ALERT")=="true":
-              k=next(iter(new)); old[k]=["scheduled","2000-01-01T00:00:00Z"]
+              k=next(i for i,v in new.items() if v[0]=="scheduled"); old[k]=["scheduled","2000-01-01T00:00:00Z"]
           changes=[]
           if old is not None:
               for k,(st,ko) in new.items():
