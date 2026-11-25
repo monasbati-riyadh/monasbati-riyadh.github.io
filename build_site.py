@@ -5,20 +5,39 @@ AR = {57:"أرسنال",58:"أستون فيلا",61:"تشيلسي",62:"إيفر�
 322:"هال سيتي",341:"ليدز يونايتد",349:"إبسويتش تاون",351:"نوتنغهام فورست",354:"كريستال بالاس",
 397:"برايتون",402:"برنتفورد",1044:"بورنموث",1076:"كوفنتري سيتي"}
 
-req = urllib.request.Request(
-    "https://api.football-data.org/v4/competitions/PL/matches?status=SCHEDULED,TIMED,IN_PLAY,PAUSED",
-    headers={"X-Auth-Token": os.environ["FD_KEY"]})
-data = json.load(urllib.request.urlopen(req, timeout=30))
-ms = data["matches"]
-if len(ms) < 20:
-    sys.exit("too few matches: %d" % len(ms))
+AR.update({
+77:"أتلتيك بلباو",78:"أتلتيكو مدريد",79:"أوساسونا",80:"إسبانيول",81:"برشلونة",82:"خيتافي",84:"مالقة",86:"ريال مدريد",
+87:"رايو فاليكانو",88:"ليفانتي",90:"ريال بيتيس",92:"ريال سوسيداد",94:"فياريال",95:"فالنسيا",263:"ألافيس",285:"إلتشي",
+558:"سيلتا فيغو",559:"إشبيلية",560:"ديبورتيفو لاكورونيا",5335:"راسينغ سانتاندير",
+98:"ميلان",99:"فيورنتينا",100:"روما",102:"أتالانتا",103:"بولونيا",104:"كالياري",107:"جنوى",108:"إنتر ميلان",109:"يوفنتوس",
+110:"لاتسيو",112:"بارما",113:"نابولي",115:"أودينيزي",454:"فينيزيا",470:"فروزينوني",471:"ساسولو",586:"تورينو",5890:"ليتشي",
+5911:"مونزا",7397:"كومو",
+1:"كولن",2:"هوفنهايم",3:"باير ليفركوزن",4:"بوروسيا دورتموند",5:"بايرن ميونخ",6:"شالكه",7:"هامبورغ",10:"شتوتغارت",
+12:"فيردر بريمن",15:"ماينز",16:"أوغسبورغ",17:"فرايبورغ",18:"بوروسيا مونشنغلادباخ",19:"آينتراخت فرانكفورت",28:"أونيون برلين",
+29:"بادربورن",719:"إلفرسبرغ",721:"لايبزيغ",
+511:"تولوز",512:"بريست",516:"مارسيليا",519:"أوكسير",521:"ليل",522:"نيس",523:"ليون",524:"باريس سان جيرمان",525:"لوريان",
+529:"رين",531:"تروا",532:"أنجيه",533:"لوهافر",535:"لومان",546:"لانس",548:"موناكو",576:"ستراسبورغ",1045:"باريس إف سي",
+498:"سبورتينغ لشبونة",503:"بورتو",610:"غلطة سراي",613:"فنربخشة",674:"آيندهوفن",675:"فينورد",851:"كلوب بروج",930:"سلافيا براغ",
+1887:"شاختار دونيتسك",1899:"أيك أثينا",2016:"لاسك",5720:"فايكينغ",5721:"بودو غليمت",7509:"سلوفان براتيسلافا",10233:"صباح"})
+COMPS=["PL","PD","SA","BL1","FL1","CL"]
 
+import time
 out = []
-for m in ms:
-    t = D.datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")) + D.timedelta(hours=3)
-    h, a = m["homeTeam"], m["awayTeam"]
-    out.append({"d": t.strftime("%Y-%m-%d"), "t": t.strftime("%H:%M"),
-                "h": AR.get(h["id"], h["shortName"]), "a": AR.get(a["id"], a["shortName"])})
+for ci, c in enumerate(COMPS):
+    if ci: time.sleep(7)
+    req = urllib.request.Request(
+        "https://api.football-data.org/v4/competitions/%s/matches?status=SCHEDULED,TIMED,IN_PLAY,PAUSED" % c,
+        headers={"X-Auth-Token": os.environ["FD_KEY"]})
+    ms = json.load(urllib.request.urlopen(req, timeout=30))["matches"]
+    if c == "PL" and len(ms) < 20:
+        sys.exit("too few PL matches: %d" % len(ms))
+    for m in ms:
+        h, a = m["homeTeam"], m["awayTeam"]
+        if not h.get("id") or not a.get("id"):
+            continue
+        t = D.datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00")) + D.timedelta(hours=3)
+        out.append({"c": c, "d": t.strftime("%Y-%m-%d"), "t": t.strftime("%H:%M"),
+                    "h": AR.get(h["id"], h["shortName"]), "a": AR.get(a["id"], a["shortName"])})
 out.sort(key=lambda x: (x["d"], x["t"]))
 meta = {"upd": D.datetime.utcnow().strftime("%Y-%m-%d"), "first": out[0]["d"], "last": out[-1]["d"], "m": out}
 line = "var PL=" + json.dumps(meta, ensure_ascii=False, separators=(",", ":")) + ";//PLDATA"
