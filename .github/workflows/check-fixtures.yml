@@ -91,10 +91,8 @@ jobs:
               for k,kind,st,ko in changes:
                   if k not in pend: pend[k]={"first_old":old.get(k),"kind":kind}
                   pend[k]["latest"]=[st,ko]
-          if pend and not test:
+          if not test:
               subprocess.run(["openssl","enc","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-out","diff.enc"],input=json.dumps(pend).encode(),check=True)
-          elif os.path.exists("diff.enc") and not test:
-              os.remove("diff.enc")
           kinds={}
           for k,kind,st,ko in changes:
               n="baseline-lost" if kind=="baseline-missing" else ("new-match" if kind=="new" else ("rescheduled" if st=="scheduled" else st))
