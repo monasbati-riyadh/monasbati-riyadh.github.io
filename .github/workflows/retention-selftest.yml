@@ -1,0 +1,240 @@
+name: SPL retention self-test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+env:
+  RID: ${{ github.run_id }}
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare synthetic harness
+        run: |
+          mkdir st
+          echo "OPENFOOT_KEY=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+          cat > h.py <<'PY'
+          import json,os,re,sys,textwrap,subprocess
+          mode,variant=sys.argv[1],sys.argv[2]
+          src=open(".github/workflows/check-fixtures.yml").read()
+          code=textwrap.dedent(src.split("python3 - <<'PY'\n")[1].split("\n          PY\n")[0])
+          a=code.index("H={"); b=code.index("assert len(new)")
+          code=code[:a]+"new=json.load(open('../feed.json'))\n"+code[b:]
+          feed={"m%d"%i:["scheduled","2026-12-%02dT15:00:00Z"%(1+i%28)] for i in range(120)}
+          if variant in("A","B"): feed["m5"]=["scheduled","2026-12-30T15:00:00Z"]
+          if variant=="B": feed["m7"]=["postponed","2026-12-07T15:00:00Z"]
+          json.dump(feed,open("feed.json","w"))
+          env=dict(os.environ,GITHUB_ENV="../genv.txt",TEST_ALERT="",TEST_BASE="",CLEAR_PENDING="true" if mode=="clear" else "")
+          open("genv.txt","w").close()
+          if mode=="baseloss" and os.path.exists("st/snap.enc"): os.remove("st/snap.enc")
+          subprocess.run(["python3","-c",code],cwd="st",env=env,check=True)
+          kv=dict(l.split("=",1) for l in open("genv.txt").read().splitlines() if "=" in l)
+          print("run",mode,variant,{k:kv[k] for k in("COUNT","BASELINE","PENDING","KINDS")})
+          json.dump(kv,open("res.json","w"))
+          PY
+      - name: Run 1, 1 first run builds baseline
+        run: |
+          python3 h.py first base
+          python3 - <<'PY'
+          import json
+          r=json.load(open("res.json"))
+          assert r["BASELINE"]=="1" and r["PENDING"]=="0",r
+          print("assert ok")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-${{ github.run_id }}-1
+      - uses: actions/cache/save@v4
+        if: hashFiles('st/diff.enc') != ''
+        with:
+          path: st/diff.enc
+          key: selftest-diff-${{ github.run_id }}-1
+      - name: Drop local copies
+        run: rm -f st/snap.enc st/diff.enc
+      - name: Restore before run 2
+        uses: actions/cache/restore@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-none
+          restore-keys: selftest-snap-${{ github.run_id }}-
+      - uses: actions/cache/restore@v4
+        with:
+          path: st/diff.enc
+          key: selftest-diff-none
+          restore-keys: selftest-diff-${{ github.run_id }}-
+      - name: Run 2, 2 first change
+        run: |
+          python3 h.py change A
+          python3 - <<'PY'
+          import json
+          r=json.load(open("res.json"))
+          assert (int(r["COUNT"]),int(r["BASELINE"]),int(r["PENDING"]))==(1,0,1),r
+          print("assert ok")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-${{ github.run_id }}-2
+      - uses: actions/cache/save@v4
+        if: hashFiles('st/diff.enc') != ''
+        with:
+          path: st/diff.enc
+          key: selftest-diff-${{ github.run_id }}-2
+      - name: Drop local copies
+        run: rm -f st/snap.enc st/diff.enc
+      - name: Restore before run 3
+        uses: actions/cache/restore@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-none
+          restore-keys: selftest-snap-${{ github.run_id }}-
+      - uses: actions/cache/restore@v4
+        with:
+          path: st/diff.enc
+          key: selftest-diff-none
+          restore-keys: selftest-diff-${{ github.run_id }}-
+      - name: Run 3, 3 baseline loss, pending must survive
+        run: |
+          python3 h.py baseloss A
+          python3 - <<'PY'
+          import json
+          r=json.load(open("res.json"))
+          assert (int(r["COUNT"]),int(r["BASELINE"]),int(r["PENDING"]))==(15,1,1),r
+          print("assert ok")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-${{ github.run_id }}-3
+      - uses: actions/cache/save@v4
+        if: hashFiles('st/diff.enc') != ''
+        with:
+          path: st/diff.enc
+          key: selftest-diff-${{ github.run_id }}-3
+      - name: Drop local copies
+        run: rm -f st/snap.enc st/diff.enc
+      - name: Restore before run 4
+        uses: actions/cache/restore@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-none
+          restore-keys: selftest-snap-${{ github.run_id }}-
+      - uses: actions/cache/restore@v4
+        with:
+          path: st/diff.enc
+          key: selftest-diff-none
+          restore-keys: selftest-diff-${{ github.run_id }}-
+      - name: Run 4, 4 second change merges
+        run: |
+          python3 h.py change B
+          python3 - <<'PY'
+          import json
+          r=json.load(open("res.json"))
+          assert (int(r["COUNT"]),int(r["BASELINE"]),int(r["PENDING"]))==(1,0,2),r
+          print("assert ok")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-${{ github.run_id }}-4
+      - uses: actions/cache/save@v4
+        if: hashFiles('st/diff.enc') != ''
+        with:
+          path: st/diff.enc
+          key: selftest-diff-${{ github.run_id }}-4
+      - name: Drop local copies
+        run: rm -f st/snap.enc st/diff.enc
+      - name: Restore before run 5
+        uses: actions/cache/restore@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-none
+          restore-keys: selftest-snap-${{ github.run_id }}-
+      - uses: actions/cache/restore@v4
+        with:
+          path: st/diff.enc
+          key: selftest-diff-none
+          restore-keys: selftest-diff-${{ github.run_id }}-
+      - name: Run 5, 5 explicit clear
+        run: |
+          python3 h.py clear B
+          python3 - <<'PY'
+          import json
+          r=json.load(open("res.json"))
+          assert (int(r["COUNT"]),int(r["BASELINE"]),int(r["PENDING"]))==(0,0,0),r
+          print("assert ok")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-${{ github.run_id }}-5
+      - uses: actions/cache/save@v4
+        if: hashFiles('st/diff.enc') != ''
+        with:
+          path: st/diff.enc
+          key: selftest-diff-${{ github.run_id }}-5
+      - name: Drop local copies
+        run: rm -f st/snap.enc st/diff.enc
+      - name: Restore before run 6
+        uses: actions/cache/restore@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-none
+          restore-keys: selftest-snap-${{ github.run_id }}-
+      - uses: actions/cache/restore@v4
+        with:
+          path: st/diff.enc
+          key: selftest-diff-none
+          restore-keys: selftest-diff-${{ github.run_id }}-
+      - name: Run 6, 6 after clear a restore must not bring pending back
+        run: |
+          python3 h.py after B
+          python3 - <<'PY'
+          import json
+          r=json.load(open("res.json"))
+          assert (int(r["COUNT"]),int(r["BASELINE"]),int(r["PENDING"]))==(0,0,0),r
+          print("assert ok")
+          PY
+      - uses: actions/cache/save@v4
+        with:
+          path: st/snap.enc
+          key: selftest-snap-${{ github.run_id }}-6
+      - uses: actions/cache/save@v4
+        if: hashFiles('st/diff.enc') != ''
+        with:
+          path: st/diff.enc
+          key: selftest-diff-${{ github.run_id }}-6
+      - name: Drop local copies
+        run: rm -f st/snap.enc st/diff.enc
+      - name: Artifact round trip
+        run: |
+          # re-create a retained diff and keep it for the artifact step
+          python3 h.py first base
+          python3 h.py change A
+          python3 h.py change B
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selftest-diff-enc-${{ github.run_id }}
+          path: st/diff.enc
+          retention-days: 1
+          overwrite: true
+      - run: rm -rf st/diff.enc
+      - uses: actions/download-artifact@v4
+        with:
+          name: selftest-diff-enc-${{ github.run_id }}
+          path: st
+      - name: Artifact decrypts to 2 synthetic entries
+        run: |
+          test -f st/diff.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:OPENFOOT_KEY -in st/diff.enc | python3 -c "import json,sys;d=json.load(sys.stdin);assert len(d)==2,len(d);print('artifact ok',len(d))"
+      - name: Clean up test caches and artifact
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for k in $(gh cache list --repo "$GITHUB_REPOSITORY" --key "selftest-" --limit 100 --json key --jq '.[].key'); do gh cache delete "$k" --repo "$GITHUB_REPOSITORY" || true; done
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RID/artifacts" --jq '.artifacts[]|select(.name|startswith("selftest-diff-enc"))|.id' | head -1)" || true
+          echo "cleanup done"
