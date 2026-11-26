@@ -12,6 +12,10 @@ on:
         description: 'Simulate a lost baseline (labelled TEST)'
         type: boolean
         default: false
+      clear_pending:
+        description: 'Clear the retained encrypted diff after official verification'
+        type: boolean
+        default: false
 permissions:
   contents: read
   issues: write
@@ -25,11 +29,17 @@ jobs:
           path: snap.enc
           key: spl-enc-none
           restore-keys: spl-enc-
+      - uses: actions/cache/restore@v4
+        with:
+          path: diff.enc
+          key: spl-diff-none
+          restore-keys: spl-diff-
       - name: Fetch all SPL matches and compare
         env:
           OPENFOOT_KEY: ${{ secrets.OPENFOOT_API_KEY }}
           TEST_ALERT: ${{ inputs.test_alert }}
           TEST_BASE: ${{ inputs.test_baseline }}
+          CLEAR_PENDING: ${{ inputs.clear_pending }}
         run: |
           python3 - <<'PY'
           import json,os,urllib.request
@@ -68,13 +78,41 @@ jobs:
                       if st in("postponed","cancelled","unknown") or (st=="scheduled" and o[1]!=ko):
                           changes.append((k,"changed",st,ko))
           subprocess.run(["openssl","enc","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-out","snap.enc"],input=json.dumps(new).encode(),check=True)
-          lines=[]
-          out=open(os.environ["GITHUB_ENV"],"a")
+          test=os.environ.get("TEST_ALERT")=="true" or os.environ.get("TEST_BASE")=="true"
+          def decf(p):
+              try:
+                  r=subprocess.run(["openssl","enc","-d","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-in",p],capture_output=True,check=True)
+                  return json.loads(r.stdout)
+              except Exception:
+                  return {}
+          pend=decf("diff.enc") if os.path.exists("diff.enc") else {}
+          if os.environ.get("CLEAR_PENDING")=="true": pend={}
+          if old is not None and not test:
+              for k,kind,st,ko in changes:
+                  if k not in pend: pend[k]={"first_old":old.get(k),"kind":kind}
+                  pend[k]["latest"]=[st,ko]
+          if pend and not test:
+              subprocess.run(["openssl","enc","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-out","diff.enc"],input=json.dumps(pend).encode(),check=True)
+          elif os.path.exists("diff.enc") and not test:
+              os.remove("diff.enc")
+          kinds={}
+          for k,kind,st,ko in changes:
+              n="baseline-lost" if kind=="baseline-missing" else ("new-match" if kind=="new" else ("rescheduled" if st=="scheduled" else st))
+              kinds[n]=kinds.get(n,0)+1
+          ks=", ".join("%s=%d"%(a,b) for a,b in sorted(kinds.items())) or "none"
           title="SPL baseline missing - review required" if old is None else "SPL fixture change detected"
-          if os.environ.get("TEST_ALERT")=="true" or os.environ.get("TEST_BASE")=="true": title="TEST - "+title
+          if test: title="TEST - "+title
+          body=["@monasbati-riyadh SPL fixture check needs review.","",
+            "Type: "+("lost baseline (no stored snapshot to compare with, not a fixture change)" if old is None else "fixture change versus the stored snapshot"),
+            "Counts this run: "+ks,
+            "Unresolved retained changes (encrypted, none cleared yet): %d"%len(pend),
+            "",
+            "No match data or identifiers are published here. The exact diff is kept encrypted in the workflow cache and artifact spl-diff-enc.",
+            "Action: verify the whole official SPL schedule against the site list, update the site from official sources, close this issue, then run this workflow with clear_pending to drop the retained diff."]
+          open("body.md","w").write("\n".join(body)+"\n")
+          out=open(os.environ["GITHUB_ENV"],"a")
           out.write("TITLE=%s\n"%title)
-          out.write("COUNT=%d\nTOTAL=%d\nBASELINE=%s\n"%(len(changes),len(new),"0" if old is not None else "1"))
-          open("issue.txt","w").write("\n".join(lines))
+          out.write("COUNT=%d\nTOTAL=%d\nBASELINE=%s\nPENDING=%d\nKINDS=%s\n"%(len(changes),len(new),"0" if old is not None else "1",len(pend),ks))
           PY
       - name: Open an issue when something changed
         if: env.COUNT != '0'
@@ -83,15 +121,26 @@ jobs:
           TESTFLAG: ${{ inputs.test_alert }}
         run: |
           T="$TITLE"
-          { echo "@monasbati-riyadh SPL fixture check needs review."; echo; echo "The daily check flagged a change or a lost baseline. No match data is published here."; echo; echo "Action: verify the whole official SPL schedule against the site list, update the site from official sources, then close this issue."; } > body.md
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$T" --body-file body.md
       - uses: actions/cache/save@v4
         with:
           path: snap.enc
           key: spl-enc-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('diff.enc') != ''
+        with:
+          path: diff.enc
+          key: spl-diff-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('diff.enc') != ''
+        with:
+          name: spl-diff-enc
+          path: diff.enc
+          retention-days: 30
+          overwrite: true
       - name: Keep the schedule alive
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/check-fixtures.yml/enable" || true
       - name: Summary
-        run: echo "tracked=$TOTAL changes=$COUNT baseline_run=$BASELINE" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "tracked=$TOTAL changes=$COUNT baseline_run=$BASELINE pending=$PENDING kinds=$KINDS" >> "$GITHUB_STEP_SUMMARY"
