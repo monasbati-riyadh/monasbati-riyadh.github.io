@@ -9,12 +9,17 @@ env:
 jobs:
   selftest:
     runs-on: ubuntu-latest
+    outputs:
+      k: ${{ steps.prep.outputs.k }}
     steps:
       - uses: actions/checkout@v4
       - name: Prepare synthetic harness
+        id: prep
         run: |
           mkdir st
-          echo "OPENFOOT_KEY=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+          K=$(openssl rand -hex 16)
+          echo "OPENFOOT_KEY=$K" >> "$GITHUB_ENV"
+          echo "k=$K" >> "$GITHUB_OUTPUT"
           cat > h.py <<'PY'
           import json,os,re,sys,textwrap,subprocess
           mode,variant=sys.argv[1],sys.argv[2]
@@ -221,20 +226,31 @@ jobs:
           path: st/diff.enc
           retention-days: 1
           overwrite: true
-      - run: rm -rf st/diff.enc
+      - run: echo uploaded
+  verify:
+    needs: selftest
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/download-artifact@v4
         with:
           name: selftest-diff-enc-${{ github.run_id }}
           path: st
       - name: Artifact decrypts to 2 synthetic entries
+        env:
+          OPENFOOT_KEY: ${{ needs.selftest.outputs.k }}
         run: |
           test -f st/diff.enc
           openssl enc -d -aes-256-cbc -pbkdf2 -pass env:OPENFOOT_KEY -in st/diff.enc | python3 -c "import json,sys;d=json.load(sys.stdin);assert len(d)==2,len(d);print('artifact ok',len(d))"
+  cleanup:
+    needs: [selftest, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
       - name: Clean up test caches and artifact
-        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          for k in $(gh cache list --repo "$GITHUB_REPOSITORY" --key "selftest-" --limit 100 --json key --jq '.[].key'); do gh cache delete "$k" --repo "$GITHUB_REPOSITORY" || true; done
-          gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RID/artifacts" --jq '.artifacts[]|select(.name|startswith("selftest-diff-enc"))|.id' | head -1)" || true
+          for k in $(gh cache list --key "selftest-" --limit 100 --json key --jq '.[].key'); do gh cache delete "$k" || true; done
+          for i in $(gh api "repos/$GH_REPO/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[]|select(.name|startswith("selftest-diff-enc"))|.id'); do gh api -X DELETE "repos/$GH_REPO/actions/artifacts/$i" || true; done
           echo "cleanup done"
