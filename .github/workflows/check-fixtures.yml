@@ -50,11 +50,21 @@ jobs:
               u=base+("&cursor="+cur if cur else "")
               j=json.load(urllib.request.urlopen(urllib.request.Request(u,headers=H),timeout=30))
               for m in j["data"]:
-                  new[m["id"]]=[m["status"],m["kickoffAt"]]
+                  new[m["id"]]=[m["status"],m.get("kickoffAt")]
               cur=(j.get("meta",{}).get("pagination") or {}).get("next_cursor")
               if not cur: break
           assert len(new)>100, "unexpectedly small match list: %d"%len(new)
           import subprocess
+          from datetime import datetime,timezone
+          def nk(v):
+              # normalised kickoff instant; missing or unparseable values stay distinct and compare by raw text
+              if not isinstance(v,str) or not v.strip(): return ("missing",None)
+              try:
+                  d=datetime.fromisoformat(v.strip().replace("Z","+00:00"))
+                  if d.tzinfo is None: return ("naive",v.strip())
+                  return ("t",int(d.astimezone(timezone.utc).timestamp()),d.microsecond)
+              except Exception:
+                  return ("bad",v)
           def dec():
               try:
                   r=subprocess.run(["openssl","enc","-d","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-in","snap.enc"],capture_output=True,check=True)
@@ -75,7 +85,7 @@ jobs:
                   if o is None:
                       if st!="finished": changes.append((k,"new",st,ko))
                   elif o[0]=="scheduled":
-                      if st in("postponed","cancelled","unknown") or (st=="scheduled" and o[1]!=ko):
+                      if st in("postponed","cancelled","unknown") or (st=="scheduled" and nk(o[1])!=nk(ko)):
                           changes.append((k,"changed",st,ko))
           subprocess.run(["openssl","enc","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-out","snap.enc"],input=json.dumps(new).encode(),check=True)
           test=os.environ.get("TEST_ALERT")=="true" or os.environ.get("TEST_BASE")=="true"
