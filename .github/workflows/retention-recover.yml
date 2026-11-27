@@ -1,0 +1,91 @@
+name: Retention recover (private)
+on:
+  workflow_dispatch:
+    inputs:
+      synthetic:
+        description: 'Synthetic round trip only (no secret, no cache)'
+        type: boolean
+        default: true
+      names:
+        description: 'Also fetch provider records for the retained ids'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        if: ${{ !inputs.synthetic }}
+        with:
+          path: diff.enc
+          key: spl-diff-none
+          restore-keys: spl-diff-
+      - name: Encrypt result to the private recipient only
+        env:
+          OPENFOOT_KEY: ${{ secrets.OPENFOOT_API_KEY }}
+          SYNTH: ${{ inputs.synthetic }}
+          NAMES: ${{ inputs.names }}
+        run: |
+          set +x
+          T="$RUNNER_TEMP"
+          cat > "$T/cert.pem" <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEDzCCAnegAwIBAgIUQSRVKMsGt69BgbPwDqsFdwJJXwYwDQYJKoZIhvcNAQEL
+          BQAwFzEVMBMGA1UEAwwMc3BsLXJlY292ZXJ5MB4XDTI2MTEyNzA1MjIxNFoXDTI2
+          MTIxMTA1MjIxNFowFzEVMBMGA1UEAwwMc3BsLXJlY292ZXJ5MIIBojANBgkqhkiG
+          9w0BAQEFAAOCAY8AMIIBigKCAYEApBa24aHbwB4eEfNF97gg61496XJ82KNnWNEP
+          8Se5StNtUpvluoLcDqVJBcL8xUuBPm6hnpAxYNHebi0Hr4N6kD0SOdJI4m3C5VPs
+          kWC+1NU+G3kSdkopxQ4NbX3nnhaTk9ZKEoZBxP9b7Vl16VzY/K2Syk4/XeXUAz4R
+          8fLk+nC92SqgenFirbzVgtzq/MvILDa16qzf9VZPcq5rJRL+9FsfyZK9OpUVX2+S
+          9rg7QP9YJ9zCSwqZmUvuEzE4bopRUYCKDR5jh4pXIMk1qwepBLx87LhYiQWaGDt2
+          ejHIpHPh9vyaKLxiXHBCbsOQScGrge3MzwOfnw6SNnoqWa6gxiuMzr7dk3d7oTec
+          8OIwngIIsL0Xdar/WMboo5PsqrIJi5CjJwq/XLc0h0hfZgqk1MENskt83/ruSjT6
+          yooP4vUvzCqYEFUshTdxD1U4UutgrCFfb47XfwdthM8D6p/yDeNJD/uoovrZoieB
+          xlU0jKRj4jcCAZzUA/EuoM7kwmGRAgMBAAGjUzBRMB0GA1UdDgQWBBQF+vym7yA3
+          9DvgDkK6xxXxVBMWOjAfBgNVHSMEGDAWgBQF+vym7yA39DvgDkK6xxXxVBMWOjAP
+          BgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQBxNaJrZCphR2Sep9fU
+          dCN7x8kwuFxTMOLCLpvMDGqvsMuCsWczakvrFWgN7tESP8pIPqsT82HK1K1uPL8x
+          NJKCm8If+NnIwDglJlTz64LAkahkZGvMl60ks4XY3nR4trLBN0Pj8AQgXzvRTds3
+          C/7BCw4fnLgmwfFAN0B3avRuijT7Z1GrkmYqiOODNxalRvzrCkcpHQC4oPekZzxd
+          mCoM4mldMnDfe0Vi5Qd6ANwqLyVrwArf3jyhs56RdY5Mm7pp68t7PBQHXrhwiUxo
+          MKK2kt0dmNcZMMEyLF4ZJCdRTPqbtCoZbrQWX8tW53IgxLlV5O3R9Smnlu+rCi76
+          bcCDjrwZXcy4IpVT1ZSghEjpGPZzFmI5RwuxOty9cZKbThXrNIZF9fU+mf5Pq+9d
+          ybgg5CtFDbrBbhiD0sBFTrfmZfbYavSPQvgjLsqzpshkgFlbq0i2hGdL4Va2weTz
+          mn3zB5b41GFyioN+kV2Ge4RhP6/w+C3jueIS7vJMTM8Vsws=
+          -----END CERTIFICATE-----
+          CERT
+          python3 - <<'PY'
+          import json,os,subprocess,urllib.request
+          T=os.environ["RUNNER_TEMP"]
+          if os.environ["SYNTH"]=="true":
+              out={"synthetic":True,"pend":{"x1":{"first_old":["scheduled","2026-01-01T00:00:00Z"],"kind":"changed","latest":["scheduled","2026-01-02T00:00:00Z"]}}}
+          else:
+              r=subprocess.run(["openssl","enc","-d","-aes-256-cbc","-pbkdf2","-pass","env:OPENFOOT_KEY","-in","diff.enc"],capture_output=True,check=True)
+              pend=json.loads(r.stdout)
+              out={"synthetic":False,"pend":pend}
+              if os.environ["NAMES"]=="true":
+                  H={"Authorization":"Bearer "+os.environ["OPENFOOT_KEY"]}
+                  base="https://openfootapi.com/v1/matches?competition=comp_saudi_pro_league_sau&limit=100"
+                  cur=None;recs={}
+                  while True:
+                      u=base+("&cursor="+cur if cur else "")
+                      j=json.load(urllib.request.urlopen(urllib.request.Request(u,headers=H),timeout=30))
+                      for m in j["data"]:
+                          if m["id"] in pend: recs[m["id"]]=m
+                      cur=(j.get("meta",{}).get("pagination") or {}).get("next_cursor")
+                      if not cur: break
+                  out["records"]=recs
+          open(T+"/plain.json","w").write(json.dumps(out))
+          PY
+          openssl cms -encrypt -aes256 -binary -in "$T/plain.json" -out "$T/out.cms" -outform DER "$T/cert.pem"
+          rm -f "$T/plain.json"
+          {
+            echo "recipient-fingerprint: $(openssl x509 -in "$T/cert.pem" -noout -fingerprint -sha256)"
+            echo "ciphertext-begin"
+            base64 -w0 "$T/out.cms"
+            echo
+            echo "ciphertext-end"
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$T/out.cms" diff.enc
